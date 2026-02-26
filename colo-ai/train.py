@@ -1,17 +1,26 @@
 import torch
 from torchvision import datasets, transforms, models
 from torch import nn, optim
+from torch.utils.data import random_split
 from PIL import Image
 
 transform = transforms.Compose([
     transforms.Resize((224, 224)),
     transforms.ToTensor()
 ])
-
 dataset = datasets.ImageFolder("data", transform=transform)
-loader = torch.utils.data.DataLoader(dataset, batch_size=8, shuffle=True)
-
 print("Classes:", dataset.classes)
+
+train_size = int(0.8 * len(dataset))
+val_size = len(dataset) - train_size
+
+train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=8, shuffle=True)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=8)
+
+print("Train size:", len(train_dataset))
+print("Validation size:", len(val_dataset))
 
 model = models.efficientnet_b0(weights="DEFAULT")
 model.classifier[1] = nn.Linear(1280, 2)
@@ -22,18 +31,41 @@ model = model.to(device)
 criterion = nn.CrossEntropyLoss()
 optimizer = optim.Adam(model.parameters(), lr=0.001)
 
-model.train()
-for images, labels in loader:
-    images, labels = images.to(device), labels.to(device)
+epochs = 3
 
-    outputs = model(images)
-    loss = criterion(outputs, labels)
+for epoch in range(epochs):
+    model.train()
+    for images, labels in train_loader:
+        images, labels = images.to(device), labels.to(device)
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+        outputs = model(images)
+        loss = criterion(outputs, labels)
 
-print("Training step complete!")
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
+
+    print(f"Epoch {epoch+1} complete")
+
+model.eval()
+correct = 0
+total = 0
+
+with torch.no_grad():
+    for images, labels in val_loader:
+        images, labels = images.to(device), labels.to(device)
+
+        outputs = model(images)
+        _, predicted = torch.max(outputs, 1)
+
+        total += labels.size(0)
+        correct += (predicted == labels).sum().item()
+
+accuracy = 100 * correct / total
+print(f"Validation Accuracy: {accuracy:.2f}%")
+
+torch.save(model.state_dict(), "coloai_model.pth")
+print("Model saved!")
 
 def predict(image_path):
     model.eval()
@@ -47,7 +79,6 @@ def predict(image_path):
     return probs.cpu()
 
 test_image = dataset.samples[0][0]
-
 probs = predict(test_image)
 
 classes = dataset.classes
