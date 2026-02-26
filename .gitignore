@@ -1,0 +1,5 @@
+# Local raw datasets
+/data_raw/
+
+# macOS
+.DS_Store
